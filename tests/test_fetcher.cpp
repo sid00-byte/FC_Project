@@ -1,10 +1,4 @@
-// test_fetcher.cpp
-// Standalone integration test for DataFetcher — NOT submitted.
-// Compile:
-//   g++ -std=c++17 -Wall DataFetcher.cpp ApiConfig.cpp test_fetcher.cpp \
-//       -lcurl -o test_fetcher
-// Run:
-//   ./test_fetcher
+// Standalone integration test for DataFetcher
 
 #include "ApiConfig.h"
 #include "DataFetcher.h"
@@ -52,7 +46,7 @@ int main()
 
     DataFetcher fetcher(api_token, 32);
 
-    // ── Test 1: fetch_prices_for_ticker ──────────────────────────────────
+    // Test 1: fetch_prices_for_ticker
     print_separator("Test 1: fetch_prices_for_ticker (single, blocking)");
     try
     {
@@ -75,7 +69,7 @@ int main()
         std::cerr << "FAIL: " << e.what() << "\n";
     }
 
-    // ── Test 2: validate_n rejects out-of-range N ─────────────────────────
+    // Test 2: validate_n rejects out-of-range N
     print_separator("Test 2: N validation (expect exception for N=20)");
     try
     {
@@ -87,7 +81,7 @@ int main()
         std::cout << "PASS: correctly rejected N=20 — " << e.what() << "\n";
     }
 
-    // ── Test 3: fetch_benchmark_prices ────────────────────────────────────
+    // Test 3: fetch_benchmark_prices
     print_separator("Test 3: fetch_benchmark_prices (IWV, N=30)");
     try
     {
@@ -105,7 +99,7 @@ int main()
         std::cerr << "FAIL: " << e.what() << "\n";
     }
 
-    // ── Test 4: fetch_all_group_prices (curl_multi async) ─────────────────
+    // Test 4: fetch_all_group_prices (curl_multi async)
     print_separator("Test 4: fetch_all_group_prices (curl_multi, N=30)");
 
     // Replace with real tickers and dates from your earnings Excel sheet

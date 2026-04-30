@@ -1,10 +1,3 @@
-// Rule 4 (include order):
-//   1. Matching project header
-//   2. C system headers  (none needed here)
-//   3. C++ standard library headers
-//   4. Third-party library headers  (libcurl)
-//   5. Other project headers        (none)
-
 #include "DataFetcher.h"
 
 #include <ctime>
@@ -19,9 +12,6 @@
 
 #include <curl/curl.h>
 
-// =============================================================================
-// libcurl write callback
-// =============================================================================
 // libcurl invokes this for every chunk received on any connection.
 // Routing through a per-handle std::string avoids temporary copies and lets
 // the multi event loop accumulate responses independently per ticker.
@@ -36,9 +26,6 @@ static std::size_t curl_write_cb(char *ptr,
     return size * nmemb;
 }
 
-// =============================================================================
-// FetchContext  (internal to DataFetcher.cpp)
-// =============================================================================
 // Binds a CURL* easy handle to its ticker name and response buffer.
 // Heap-allocated via unique_ptr so the buffer address stays stable while
 // libcurl holds a raw pointer to it through CURLOPT_WRITEDATA.
@@ -49,10 +36,7 @@ struct FetchContext
     std::string buffer;
 };
 
-// =============================================================================
 // Constructor / Destructor
-// =============================================================================
-
 DataFetcher::DataFetcher(const std::string &api_token, long max_connections)
     : api_token_(api_token), max_connections_(std::min(max_connections, kMaxConnections))
 {
@@ -67,10 +51,6 @@ DataFetcher::~DataFetcher()
     curl_global_cleanup();
 }
 
-// =============================================================================
-// validate_n
-// =============================================================================
-
 void DataFetcher::validate_n(int n, const std::string &caller_context)
 {
     if (n < kMinN || n > kMaxN)
@@ -81,10 +61,6 @@ void DataFetcher::validate_n(int n, const std::string &caller_context)
             std::to_string(kMinN) + ", " + std::to_string(kMaxN) + "].");
     }
 }
-
-// =============================================================================
-// build_url
-// =============================================================================
 
 std::string DataFetcher::build_url(const std::string &ticker,
                                    const std::string &from_date,
@@ -100,9 +76,6 @@ std::string DataFetcher::build_url(const std::string &ticker,
     return oss.str();
 }
 
-// =============================================================================
-// date_window
-// =============================================================================
 // A plain N-day window would often fall short because weekends and holidays
 // reduce trading days below 2N+1. kDateBufferDays of extra calendar days
 // ensures we always retrieve enough data regardless of the announcement date.
@@ -132,9 +105,6 @@ std::pair<std::string, std::string> DataFetcher::date_window(
     return {fmt(tm_start), fmt(tm_end)};
 }
 
-// =============================================================================
-// parse_eod_csv
-// =============================================================================
 // EOD CSV layout (header always present on line 1):
 //   Date, Open, High, Low, Close, Adjusted_close, Volume
 //   col:  0     1     2    3      4      5           6
@@ -156,7 +126,6 @@ std::vector<double> DataFetcher::parse_eod_csv(const std::string &csv_body)
             continue;
         }
 
-        // Rule 2: one statement per line — empty-line guard on its own line.
         if (line.empty())
         {
             continue;
@@ -188,10 +157,6 @@ std::vector<double> DataFetcher::parse_eod_csv(const std::string &csv_body)
 
     return prices;
 }
-
-// =============================================================================
-// http_get  (blocking single-ticker fetch)
-// =============================================================================
 
 std::string DataFetcher::http_get(const std::string &url) const
 {
@@ -229,16 +194,11 @@ std::string DataFetcher::http_get(const std::string &url) const
     return body;
 }
 
-// =============================================================================
-// fetch_prices_for_ticker  (single ticker, blocking)
-// =============================================================================
-
 std::vector<double> DataFetcher::fetch_prices_for_ticker(
     const std::string &ticker,
     const std::string &announcement_date,
     int n) const
 {
-    // Rule 10: fail fast on invalid N before any network activity.
     validate_n(n, "fetch_prices_for_ticker [ticker=" + ticker + "]");
 
     auto [from, to] = date_window(announcement_date, n);
@@ -247,7 +207,7 @@ std::vector<double> DataFetcher::fetch_prices_for_ticker(
 
     std::vector<double> prices = parse_eod_csv(csv_body);
 
-    // Project spec: warn the user explicitly if there are not enough prices
+    // warn the user explicitly if there are not enough prices
     // for the requested 2N+1 event window around this announcement.
     const int required = 2 * n + 1;
     if (static_cast<int>(prices.size()) < required)
@@ -262,9 +222,6 @@ std::vector<double> DataFetcher::fetch_prices_for_ticker(
     return prices;
 }
 
-// =============================================================================
-// fetch_benchmark_prices  (IWV, blocking)
-// =============================================================================
 // The IWV benchmark must cover every stock's [-N, +N] event window.
 // AppCoordinator supplies the earliest and latest announcement dates across
 // the full universe; we expand each boundary by N + kDateBufferDays so the
@@ -287,10 +244,6 @@ std::vector<double> DataFetcher::fetch_benchmark_prices(
     return parse_eod_csv(csv_body);
 }
 
-// =============================================================================
-// run_multi_fetch  (curl_multi async event loop)
-// =============================================================================
-//
 // curl_multi drives all connections concurrently on one thread.  While one
 // response is in flight, the socket for every other ticker is also open and
 // advancing — total wall time ≈ slowest individual response, not the sum.
@@ -312,7 +265,7 @@ void DataFetcher::run_multi_fetch(
         return;
     }
 
-    // ── 1. Create multi handle and cap concurrent connections ──────────────
+    //1. Create multi handle and cap concurrent connections
     CURLM *multi = curl_multi_init();
     if (!multi)
     {
@@ -322,7 +275,7 @@ void DataFetcher::run_multi_fetch(
     curl_multi_setopt(multi, CURLMOPT_MAX_TOTAL_CONNECTIONS, max_connections_);
     curl_multi_setopt(multi, CURLMOPT_MAX_HOST_CONNECTIONS, max_connections_);
 
-    // ── 2. Register one easy handle per ticker ─────────────────────────────
+    //2. Register one easy handle per ticker
     // unique_ptr ownership: released into handle_map; reclaimed in cleanup.
     std::map<CURL *, std::unique_ptr<FetchContext>> handle_map;
 
@@ -331,7 +284,6 @@ void DataFetcher::run_multi_fetch(
         auto it = announcement_dates.find(ticker);
         if (it == announcement_dates.end())
         {
-            // Missing date is a data-preparation error — surface it clearly.
             std::cerr << "[DataFetcher] No announcement date for ticker="
                       << ticker << " — skipping.\n";
             continue;
@@ -361,7 +313,7 @@ void DataFetcher::run_multi_fetch(
         handle_map[easy] = std::move(ctx);
     }
 
-    // ── 3 & 4. Event loop ─────────────────────────────────────────────────
+    //3 & 4. Event loop
     int still_running = 1;
     long completed = 0;
     long total = static_cast<long>(handle_map.size());
@@ -376,7 +328,7 @@ void DataFetcher::run_multi_fetch(
             break;
         }
 
-        // ── 5. Drain completed transfers ───────────────────────────────────
+        //5. Drain completed transfers
         int msgs_left = 0;
         CURLMsg *msg = nullptr;
 
@@ -401,7 +353,7 @@ void DataFetcher::run_multi_fetch(
                     {
                         std::vector<double> prices = parse_eod_csv(ctx.buffer);
 
-                        // Project spec: warn user if trading-day count is
+                        // warn user if trading-day count is
                         // insufficient for the requested event window.
                         const int required = 2 * n + 1;
                         if (static_cast<int>(prices.size()) < required)
@@ -443,7 +395,7 @@ void DataFetcher::run_multi_fetch(
                           << "/" << total << " tickers fetched.\n";
             }
 
-            // ── 6. Release this handle — unique_ptr cleans up FetchContext ─
+            //6. Release this handle — unique_ptr cleans up FetchContext
             curl_multi_remove_handle(multi, easy);
             curl_easy_cleanup(easy);
             handle_map.erase(easy);
@@ -457,7 +409,7 @@ void DataFetcher::run_multi_fetch(
         }
     }
 
-    // Safety pass: release any handles that did not complete (e.g. after error break).
+    //release any handles that did not complete
     for (auto &[easy, ctx] : handle_map)
     {
         curl_multi_remove_handle(multi, easy);
@@ -468,10 +420,6 @@ void DataFetcher::run_multi_fetch(
     curl_multi_cleanup(multi);
 }
 
-// =============================================================================
-// fetch_all_group_prices  (public entry point)
-// =============================================================================
-
 void DataFetcher::fetch_all_group_prices(
     const std::vector<std::string> &beat_tickers,
     const std::vector<std::string> &meet_tickers,
@@ -481,7 +429,6 @@ void DataFetcher::fetch_all_group_prices(
     const std::function<void(const std::string &,
                              std::vector<double>)> &callback) const
 {
-    // Rule 10: validate N before allocating any handles or making any calls.
     validate_n(n, "fetch_all_group_prices");
 
     std::vector<std::string> all_tickers;
