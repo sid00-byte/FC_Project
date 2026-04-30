@@ -1,0 +1,14 @@
+# API token — NEVER commit this
+config.txt
+
+# Build artifacts (project requirement: remove before submission)
+*.o
+project
+test_fetcher
+
+# macOS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
